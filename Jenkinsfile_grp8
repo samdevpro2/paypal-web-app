@@ -1,0 +1,70 @@
+pipeline{
+    agent any
+    tools{
+        maven "maven3.8.5"
+    }
+    stages{
+        stage('1.cloningcode'){
+            steps{
+         sh "echo cloning src from our project repo"
+        git credentialsId: 'git-credentials1', url: 'https://github.com/samdevpro2/paypal-web-app.git'
+            }
+        }
+        stage('2.Build'){
+            steps{
+                sh "echo compilation, validation, testing, and creating a package"
+                sh "mvn clean package"
+            }
+        }
+        stage('3.CodeQuality'){
+            steps{
+          sh "mvn sonar:sonar"
+            }
+        }
+        stage('4.UploadArtifact'){
+            steps{
+         sh "mvn deploy"
+            }
+        }
+        stage('5.Deploy2Tomcatdev'){
+            steps{
+          sh "echo deploying artifact into tomcat"
+        deploy adapters: [tomcat9(credentialsId: 'tomcat-credentials1', path: '', url: 'http://54.208.141.19:8080/')], contextPath: null, war: 'target/*war'
+            }
+        }
+        stage('6.Deploy2UAT'){
+            steps{
+               sh "echo deploying artifact into tomcat"
+    sshagent(['agentssh-credentials']) {
+    // some block
+        sh "scp -o StrictHostKeyChecking=no target/*war ec2-user@172.31.94.128:/opt/tomcat9/webapps/uat.war"
+              }
+            }
+        }
+        stage('7.manualapproval'){
+            steps{
+                 timeout(time:5, unit:'HOURS'){
+            input message: 'please approve deployment into production'
+              }
+            }
+        }
+        stage('8.Deploy2Prod'){
+            steps{
+                  sh "echo deploying artifact into production"
+       sshagent(['agentssh-credentials']) {
+    // some block
+        sh "scp -o StrictHostKeyChecking=no target/*war ec2-user@172.31.94.128:/opt/tomcat9/webapps/app.war"
+             }
+            }
+        }
+    }
+    post{
+        always{
+            emailext body: '''success,
+Deployment into production is successful
+
+Regard,
+Assistant.''', subject: 'success', to: 'samglobal418@gmail.com'
+        }    
+}
+}
